@@ -16,7 +16,7 @@ pkg.cflags:
     - '-DGPIOTE_ENABLED=1'
     - '-DI2S_ENABLED=1'
     - '-DLPCOMP_ENABLED=1'
-    - '-DNRF52'
+    - '-DNRF52810_XXAA'
     - '-DPDM_ENABLED=0'
     - '-DPERIPHERAL_RESOURCE_SHARING_ENABLED=1'
     - '-DPWM0_ENABLED=1'
@@ -74,3 +74,4 @@ pkg.deps.UART_1:
 
 pkg.deps.SOFT_PWM:
     - "@apache-mynewt-core/hw/drivers/pwm/soft_pwm"
+
