@@ -1,0 +1,4 @@
+### Target: targets/blemesh_v0p1
+target.app: "apps/blemesh"
+target.bsp: "hw/bsp/blemesh_v0p1"
+target.build_profile: "debug"

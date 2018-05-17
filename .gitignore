@@ -1,0 +1,32 @@
+
+gerbers/
+
+# Temporary files
+*.000
+*.bak
+*.bck
+*.kicad_pcb-bak
+fp-lib-table
+*~
+_autosave-*
+*.tmp
+
+# Netlist files (exported from Eeschema)
+*.net
+
+# Autorouter files (exported from Pcbnew)
+.dsn
+
+# Exported BOM files
+*.xml
+
+build/
+*.a
+*.o
+
+Pipfile.lock
+*.egg-info
+__pycache__/
+
+*.zip
+*.csv

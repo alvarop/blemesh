@@ -1,0 +1,7 @@
+
+syscfg.defs:
+    USE_BLE:
+        description: 'Enable BLE'
+        value: 0
+
+
