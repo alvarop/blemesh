@@ -41,9 +41,12 @@
 #if MYNEWT_VAL(UART_1)
 #include "uart_bitbang/uart_bitbang.h"
 #endif
-#include "os/os_dev.h"
 #include "bsp.h"
-#if MYNEWT_VAL(PWM)
+#if MYNEWT_VAL(ADC_0)
+#include <adc_nrf52/adc_nrf52.h>
+#include <nrfx_saadc.h>
+#endif
+#if MYNEWT_VAL(PWM_0) || MYNEWT_VAL(PWM_1) || MYNEWT_VAL(PWM_2)
 #include <pwm_nrf52/pwm_nrf52.h>
 #endif
 #if MYNEWT_VAL(SOFT_PWM)
@@ -66,47 +69,57 @@ static const struct uart_bitbang_conf os_bsp_uart1_cfg = {
     .ubc_cputimer_freq = MYNEWT_VAL(OS_CPUTIME_FREQ),
 };
 #endif
-
 #if MYNEWT_VAL(SPI_0_MASTER)
 /*
  * NOTE: Our HAL expects that the SS pin, if used, is treated as a gpio line
  * and is handled outside the SPI routines.
  */
 static const struct nrf52_hal_spi_cfg os_bsp_spi0m_cfg = {
-    .sck_pin      = 23,
-    .mosi_pin     = 24,
-    .miso_pin     = 25,
+    .sck_pin      = MYNEWT_VAL(SPI_0_MASTER_PIN_SCK),
+    .mosi_pin     = MYNEWT_VAL(SPI_0_MASTER_PIN_MOSI),
+    .miso_pin     = MYNEWT_VAL(SPI_0_MASTER_PIN_MISO),
 };
 #endif
 
 #if MYNEWT_VAL(SPI_0_SLAVE)
 static const struct nrf52_hal_spi_cfg os_bsp_spi0s_cfg = {
-    .sck_pin      = 23,
-    .mosi_pin     = 24,
-    .miso_pin     = 25,
-    .ss_pin       = 22,
+    .sck_pin      = MYNEWT_VAL(SPI_0_SLAVE_PIN_SCK),
+    .mosi_pin     = MYNEWT_VAL(SPI_0_SLAVE_PIN_MOSI),
+    .miso_pin     = MYNEWT_VAL(SPI_0_SLAVE_PIN_MISO),
+    .ss_pin       = MYNEWT_VAL(SPI_0_SLAVE_PIN_SS),
+};
+#endif
+
+#if MYNEWT_VAL(ADC_0)
+static struct adc_dev os_bsp_adc0;
+static struct nrf52_adc_dev_cfg os_bsp_adc0_config = {
+    .nadc_refmv     = MYNEWT_VAL(ADC_0_REFMV_0),
 };
 #endif
 
 #if MYNEWT_VAL(PWM_0)
 static struct pwm_dev os_bsp_pwm0;
+int pwm0_idx;
 #endif
 #if MYNEWT_VAL(PWM_1)
 static struct pwm_dev os_bsp_pwm1;
+int pwm1_idx;
 #endif
 #if MYNEWT_VAL(PWM_2)
 static struct pwm_dev os_bsp_pwm2;
+int pwm2_idx;
 #endif
 #if MYNEWT_VAL(SOFT_PWM)
-static struct pwm_dev os_bsp_spwm;
+static struct pwm_dev os_bsp_spwm[MYNEWT_VAL(SOFT_PWM_DEVS)];
+char* spwm_name[MYNEWT_VAL(SOFT_PWM_DEVS)];
+int spwm_idx[MYNEWT_VAL(SOFT_PWM_DEVS)];
 #endif
-
 
 #if MYNEWT_VAL(I2C_0)
 static const struct nrf52_hal_i2c_cfg hal_i2c_cfg = {
-    .scl_pin = SCL_PIN,
-    .sda_pin = SDA_PIN,
-    .i2c_frequency = 100    /* 100 kHz */
+    .scl_pin = MYNEWT_VAL(I2C_0_PIN_SCL),
+    .sda_pin = MYNEWT_VAL(I2C_0_PIN_SDA),
+    .i2c_frequency = MYNEWT_VAL(I2C_0_FREQ_KHZ),
 };
 #endif
 
@@ -174,6 +187,9 @@ void
 hal_bsp_init(void)
 {
     int rc;
+#if MYNEWT_VAL(SOFT_PWM)
+    int idx;
+#endif
 
     (void)rc;
 
@@ -205,43 +221,61 @@ hal_bsp_init(void)
     assert(rc == 0);
 #endif
 
+#if MYNEWT_VAL(ADC_0)
+    rc = os_dev_create((struct os_dev *) &os_bsp_adc0,
+                       "adc0",
+                       OS_DEV_INIT_KERNEL,
+                       OS_DEV_INIT_PRIO_DEFAULT,
+                       nrf52_adc_dev_init,
+                       &os_bsp_adc0_config);
+    assert(rc == 0);
+#endif
+
 #if MYNEWT_VAL(PWM_0)
+    pwm0_idx = 0;
     rc = os_dev_create((struct os_dev *) &os_bsp_pwm0,
                        "pwm0",
                        OS_DEV_INIT_KERNEL,
                        OS_DEV_INIT_PRIO_DEFAULT,
                        nrf52_pwm_dev_init,
-                       NULL);
+                       &pwm0_idx);
     assert(rc == 0);
 #endif
 #if MYNEWT_VAL(PWM_1)
+    pwm1_idx = 1;
     rc = os_dev_create((struct os_dev *) &os_bsp_pwm1,
                        "pwm1",
                        OS_DEV_INIT_KERNEL,
                        OS_DEV_INIT_PRIO_DEFAULT,
                        nrf52_pwm_dev_init,
-                       NULL);
+                       &pwm1_idx);
     assert(rc == 0);
 #endif
 #if MYNEWT_VAL(PWM_2)
+    pwm2_idx = 2;
     rc = os_dev_create((struct os_dev *) &os_bsp_pwm2,
                        "pwm2",
                        OS_DEV_INIT_KERNEL,
                        OS_DEV_INIT_PRIO_DEFAULT,
                        nrf52_pwm_dev_init,
-                       NULL);
+                       &pwm2_idx);
     assert(rc == 0);
 #endif
 #if MYNEWT_VAL(SOFT_PWM)
-    rc = os_dev_create((struct os_dev *) &os_bsp_spwm,
-                       "spwm",
-                       OS_DEV_INIT_KERNEL,
-                       OS_DEV_INIT_PRIO_DEFAULT,
-                       soft_pwm_dev_init,
-                       NULL);
-    assert(rc == 0);
+    for (idx = 0; idx < MYNEWT_VAL(SOFT_PWM_DEVS); idx++)
+    {
+        spwm_name[idx] = "spwm0";
+        spwm_name[idx][4] = '0' + idx;
+        spwm_idx[idx] = idx;
+        rc = os_dev_create((struct os_dev *) &os_bsp_spwm[idx],
+                           spwm_name[idx],
+                           OS_DEV_INIT_KERNEL,
+                           OS_DEV_INIT_PRIO_DEFAULT,
+                           soft_pwm_dev_init,
+                           &spwm_idx[idx]);
+        assert(rc == 0);
+    }
 #endif
-
 
 #if (MYNEWT_VAL(OS_CPUTIME_TIMER_NUM) >= 0)
     rc = os_cputime_init(MYNEWT_VAL(OS_CPUTIME_FREQ));
