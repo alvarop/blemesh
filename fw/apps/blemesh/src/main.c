@@ -6,15 +6,17 @@
 #include "console/console.h"
 #include "bsp/bsp.h"
 #include "hal/hal_gpio.h"
+#include "ws2812.h"
 
 #if MYNEWT_VAL(USE_BLE)
 #include <host/ble_hs.h>
 #endif
 
 #define BLINK_TASK_PRI         (99)
-#define BLINK_STACK_SIZE       (64)
+#define BLINK_STACK_SIZE       (256)
 struct os_task blink_task;
 os_stack_t blink_task_stack[BLINK_STACK_SIZE];
+
 
 #if MYNEWT_VAL(USE_BLE)
 
@@ -84,15 +86,20 @@ void blink_task_fn(void *arg) {
     hal_gpio_init_out(LED_1_PIN, 0);
     hal_gpio_init_out(LED_2_PIN, 0);
     hal_gpio_init_out(LED_3_PIN, 0);
+    ws2812_init();
 
     while(1) {
         os_time_delay(OS_TICKS_PER_SEC);
 
         hal_gpio_write(LED_1_PIN, 1);
+        ws2812_set_pixel(8, 10, 10, 10);
+        ws2812_write();
 
-        os_time_delay(1);
+        os_time_delay(OS_TICKS_PER_SEC);
 
         hal_gpio_write(LED_1_PIN, 0);
+        ws2812_set_pixel(8, 0, 0, 0);
+        ws2812_write();
     }
 
 }
