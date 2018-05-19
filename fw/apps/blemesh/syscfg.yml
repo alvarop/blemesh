@@ -5,3 +5,5 @@ syscfg.defs:
         value: 0
 
 
+syscfg.vals:
+    TIMER_1: 1

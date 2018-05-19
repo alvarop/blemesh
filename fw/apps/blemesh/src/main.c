@@ -3,19 +3,27 @@
 
 #include "sysinit/sysinit.h"
 #include "os/os.h"
+#include "os/os_cputime.h"
 #include "console/console.h"
-#include "bsp/bsp.h"
 #include "hal/hal_gpio.h"
+#include "hal/hal_timer.h"
+#include "bsp/bsp.h"
 #include "ws2812.h"
+
 
 #if MYNEWT_VAL(USE_BLE)
 #include <host/ble_hs.h>
 #endif
 
 #define BLINK_TASK_PRI         (99)
-#define BLINK_STACK_SIZE       (256)
+#define BLINK_STACK_SIZE       (128)
 struct os_task blink_task;
 os_stack_t blink_task_stack[BLINK_STACK_SIZE];
+
+#define ULTRASOUND_TASK_PRI         (50)
+#define ULTRASOUND_STACK_SIZE       (128)
+struct os_task ultrasound_task;
+os_stack_t ultrasound_task_stack[ULTRASOUND_STACK_SIZE];
 
 
 #if MYNEWT_VAL(USE_BLE)
@@ -81,6 +89,46 @@ static void ble_app_on_sync(void) {
 #endif
 
 
+// Timeout (in microseconds) before giving up
+#define TIMEOUT_US 400000
+
+struct hal_timer ultrasound_timeout_timer;
+
+static struct os_sem ultrasound_processing_sem;
+
+static volatile uint32_t start_time;
+static volatile uint32_t stop_time;
+
+// Measure pulse width here
+static void ultrasound_irq(void *arg) {
+    os_error_t err;
+
+    if (hal_gpio_read(ECHO_PIN) == 1) {
+        start_time = hal_timer_read(1);
+    } else {
+        stop_time = hal_timer_read(1);
+        err = os_sem_release(&ultrasound_processing_sem);
+        assert(err == OS_OK);
+
+        // Re-set ir timeout
+        hal_timer_stop(&ultrasound_timeout_timer);
+    }
+}
+
+static void ultrasound_timeout_cb(void *arg) {
+    os_error_t err;
+
+    // No echo detected :(
+    err = os_sem_release(&ultrasound_processing_sem);
+    assert(err == OS_OK);
+
+    console_printf("timeout!\n");
+
+    start_time = 0;
+    stop_time = 0;
+}
+
+
 void blink_task_fn(void *arg) {
 
     hal_gpio_init_out(LED_1_PIN, 0);
@@ -95,13 +143,67 @@ void blink_task_fn(void *arg) {
         ws2812_set_pixel(8, 10, 10, 10);
         ws2812_write();
 
-        os_time_delay(OS_TICKS_PER_SEC);
+        os_time_delay(1);
 
         hal_gpio_write(LED_1_PIN, 0);
         ws2812_set_pixel(8, 0, 0, 0);
         ws2812_write();
     }
+}
 
+#define UM_PER_US 343
+
+void ultrasound_task_fn(void *arg) {
+
+    os_error_t err;
+
+    err = os_sem_init(&ultrasound_processing_sem, 1);
+    assert(err == OS_OK);
+
+    hal_gpio_irq_init(ECHO_PIN, ultrasound_irq, NULL,
+        HAL_GPIO_TRIG_BOTH, HAL_GPIO_PULL_NONE);
+
+    // 1MHz timer to measure incoming pulse edge times
+    hal_timer_config(1, 1000000);
+
+    // Timeout used to process a packet after some time without edges
+    hal_timer_set_cb(1, &ultrasound_timeout_timer, ultrasound_timeout_cb, NULL);
+
+    hal_gpio_irq_enable(ECHO_PIN);
+
+    hal_gpio_init_out(TRIG_PIN, 0);
+
+    start_time = 0;
+    stop_time = 0;
+
+    while (1) {
+
+        os_time_delay(OS_TICKS_PER_SEC/2);
+
+        hal_gpio_write(LED_3_PIN, 1);
+        hal_gpio_write(LED_2_PIN, 1);
+        hal_gpio_write(TRIG_PIN, 1);
+        os_cputime_delay_usecs(10);
+        hal_gpio_write(TRIG_PIN, 0);
+        hal_gpio_write(LED_3_PIN, 0);
+
+        hal_timer_start(&ultrasound_timeout_timer, TIMEOUT_US);
+
+        err = os_sem_pend(&ultrasound_processing_sem, 0xFFFFFFFF);
+        err = os_sem_pend(&ultrasound_processing_sem, 0xFFFFFFFF);
+        os_sem_release(&ultrasound_processing_sem);
+
+        hal_gpio_write(LED_2_PIN, 0);
+
+        if(start_time && stop_time) {
+            uint32_t diff_us = stop_time - start_time;
+            uint32_t diff_um = (diff_us * 343)/2;
+            console_printf("%ldmm\n", diff_um/1000);
+        }
+
+        start_time = 0;
+        stop_time = 0;
+    }
 }
 
 int
@@ -118,6 +220,16 @@ main(int argc, char **argv)
         OS_WAIT_FOREVER,
         blink_task_stack,
         BLINK_STACK_SIZE);
+
+    os_task_init(
+        &ultrasound_task,
+        "ultrasound_task",
+        ultrasound_task_fn,
+        NULL,
+        ULTRASOUND_TASK_PRI,
+        OS_WAIT_FOREVER,
+        ultrasound_task_stack,
+        ULTRASOUND_STACK_SIZE);
 
 #if MYNEWT_VAL(USE_BLE)
      ble_hs_cfg.sync_cb = ble_app_on_sync;
