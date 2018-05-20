@@ -129,25 +129,45 @@ static void ultrasound_timeout_cb(void *arg) {
 }
 
 
+static uint32_t last_distance = 0;
+
+#define MAX_MM 300
+
+#define MAX_BRIGHTNESS 32
+
+void update_leds(uint32_t distance_mm) {
+
+    for(uint16_t led=1; led < WS2812_NUM_PIXELS; led++) {
+        uint32_t threshold = MAX_MM * (WS2812_NUM_PIXELS-led+1) /(WS2812_NUM_PIXELS-1);
+        int32_t brightness = threshold - distance_mm;
+        if(brightness > 255) {
+            brightness = 255;
+        } else if (brightness < 0) {
+            brightness = 0;
+        }
+
+        brightness = (brightness * MAX_BRIGHTNESS)/ 256;
+
+        // console_printf("%d %ld %ld\n", led, distance_mm, threshold);
+        if(distance_mm < (threshold)) {
+            ws2812_set_pixel(led, brightness, brightness, brightness);
+        } else {
+            ws2812_set_pixel(led, 0, 0, 0);
+        }
+    }
+
+    ws2812_write();
+}
+
 void blink_task_fn(void *arg) {
 
     hal_gpio_init_out(LED_1_PIN, 0);
     hal_gpio_init_out(LED_2_PIN, 0);
     hal_gpio_init_out(LED_3_PIN, 0);
-    ws2812_init();
 
     while(1) {
-        os_time_delay(OS_TICKS_PER_SEC);
-
-        hal_gpio_write(LED_1_PIN, 1);
-        ws2812_set_pixel(8, 10, 10, 10);
-        ws2812_write();
-
-        os_time_delay(1);
-
-        hal_gpio_write(LED_1_PIN, 0);
-        ws2812_set_pixel(8, 0, 0, 0);
-        ws2812_write();
+        os_time_delay(OS_TICKS_PER_SEC/64);
+        update_leds(last_distance);
     }
 }
 
@@ -156,6 +176,8 @@ void blink_task_fn(void *arg) {
 void ultrasound_task_fn(void *arg) {
 
     os_error_t err;
+
+    ws2812_init();
 
     err = os_sem_init(&ultrasound_processing_sem, 1);
     assert(err == OS_OK);
@@ -178,7 +200,7 @@ void ultrasound_task_fn(void *arg) {
 
     while (1) {
 
-        os_time_delay(OS_TICKS_PER_SEC/2);
+        os_time_delay(OS_TICKS_PER_SEC/16);
 
         hal_gpio_write(LED_3_PIN, 1);
         hal_gpio_write(LED_2_PIN, 1);
@@ -198,7 +220,15 @@ void ultrasound_task_fn(void *arg) {
         if(start_time && stop_time) {
             uint32_t diff_us = stop_time - start_time;
             uint32_t diff_um = (diff_us * 343)/2;
-            console_printf("%ldmm\n", diff_um/1000);
+            uint32_t distance_mm = diff_um/1000;
+            // console_printf("%ldmm\n", distance_mm);
+            if(distance_mm < (MAX_MM + 25)) {
+                last_distance = distance_mm;
+            } else {
+                if(last_distance <= (MAX_MM + 25)){
+                    last_distance += 25;
+                }
+            }
         }
 
         start_time = 0;
