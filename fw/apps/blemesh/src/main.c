@@ -66,7 +66,8 @@ static void ble_app_advertise() {
         BLE_EDDYSTONE_URL_SCHEME_HTTPS,
         "alvarop.com",
         11,
-        BLE_EDDYSTONE_URL_SUFFIX_NONE);
+        BLE_EDDYSTONE_URL_SUFFIX_NONE,
+        0);
     assert(rc == 0);
 
     adv_params = (struct ble_gap_adv_params){ 0 };

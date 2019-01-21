@@ -23,52 +23,8 @@ syscfg.defs:
         description: 'Set to indicate that BSP has NRF52810'
         value: 1
 
-    UART_0:
-        description: 'Whether to enable UART0'
-        value:  1
-    UART_0_PIN_TX:
-        description: 'TX pin for UART0'
-        value:  9
-    UART_0_PIN_RX:
-        description: 'RX pin for UART0'
-        value:  10
-
-    UART_1:
-        description: 'Whether to enable bitbanger UART1'
-        value:  0
-    UART_1_PIN_TX:
-        description: 'TX pin for UART1'
-        value:  -1
-    UART_1_PIN_RX:
-        description: 'RX pin for UART1'
-        value:  -1
-
-    TIMER_0:
-        description: 'NRF52 Timer 0'
-        value:  1
-    TIMER_1:
-        description: 'NRF52 Timer 1'
-        value:  0
-    TIMER_2:
-        description: 'NRF52 Timer 2'
-        value:  0
-    TIMER_3:
-        description: 'NRF52 Timer 3'
-        value:  0
-    TIMER_4:
-        description: 'NRF52 Timer 4'
-        value:  0
-    TIMER_5:
-        description: 'NRF52 RTC 0'
-        value:  0
-
-syscfg.defs.BLE_LP_CLOCK:
-    TIMER_0:
-        value: 0
-    TIMER_5:
-        value: 1
-
 syscfg.vals:
+    MCU_NRF52810: 1
     CONFIG_FCB_FLASH_AREA: FLASH_AREA_NFFS
     REBOOT_LOG_FLASH_AREA: FLASH_AREA_REBOOT_LOG
     NFFS_FLASH_AREA: FLASH_AREA_NFFS
@@ -79,7 +35,14 @@ syscfg.vals:
     HARDFLOAT: 0
     I2C_0: 0
 
+    UART_0: 1
+    UART_0_PIN_TX: 9
+    UART_0_PIN_RX: 10
+
+
 syscfg.vals.BLE_LP_CLOCK:
     OS_CPUTIME_FREQ: 32768
     OS_CPUTIME_TIMER_NUM: 5
     BLE_XTAL_SETTLE_TIME: 1500
+    TIMER_0: 0
+    TIMER_5: 1
