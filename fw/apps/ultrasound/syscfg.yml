@@ -1,0 +1,9 @@
+
+syscfg.defs:
+    USE_BLE:
+        description: 'Enable BLE'
+        value: 0
+
+
+syscfg.vals:
+    TIMER_1: 1
