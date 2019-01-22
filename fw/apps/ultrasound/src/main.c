@@ -109,7 +109,7 @@ static void ble_app_on_sync(void) {
 
 
 // Timeout (in microseconds) before giving up
-#define TIMEOUT_US 400000
+#define TIMEOUT_US 100000
 
 struct hal_timer ultrasound_timeout_timer;
 
@@ -141,7 +141,7 @@ static void ultrasound_timeout_cb(void *arg) {
     err = os_sem_release(&ultrasound_processing_sem);
     assert(err == OS_OK);
 
-    console_printf("timeout!\n");
+    // console_printf("timeout!\n");
 
     start_time = 0;
     stop_time = 0;
@@ -208,7 +208,9 @@ void ultrasound_task_fn(void *arg) {
             uint32_t diff_us = stop_time - start_time;
             uint32_t diff_um = (diff_us * 343)/2;
             distance_mm = diff_um/1000;
-            // console_printf("%ldmm\n", distance_mm);
+            printf("%ldmm\n", distance_mm);
+        } else {
+            distance_mm = UINT32_MAX;
         }
 
         start_time = 0;

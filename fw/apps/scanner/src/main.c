@@ -17,15 +17,28 @@
 #include <host/ble_hs.h>
 #endif
 
-#define BLINK_TASK_PRI         (99)
-#define BLINK_STACK_SIZE       (128)
-struct os_task blink_task;
-os_stack_t blink_task_stack[BLINK_STACK_SIZE];
+#define LED_TASK_PRI         (99)
+#define LED_STACK_SIZE       (128)
+struct os_task led_task;
+os_stack_t led_task_stack[LED_STACK_SIZE];
 
-static uint32_t distance_mm = 0;
+#define WATER_TASK_PRI         (98)
+#define WATER_STACK_SIZE       (128)
+struct os_task water_task;
+os_stack_t water_task_stack[WATER_STACK_SIZE];
+
+static uint32_t distance_mm = 2000;
 // static uint16_t timestamp = 0;
 
-void update_leds(uint32_t distance_mm);
+static uint16_t pixel_brightness;
+
+typedef enum {
+    LED_IDLE = 0,
+    LED_FADING_IN,
+    LED_FADING_OUT,
+} led_state_t;
+
+static led_state_t led_state = LED_IDLE;
 
 #if MYNEWT_VAL(USE_BLE)
 
@@ -79,6 +92,10 @@ static void ble_app_scan(void) {
     }
 }
 
+
+#define TYPE_ULTRASOUND 0x01
+#define TYPE_PIR        0x02
+
 static int ble_app_gap_event(struct ble_gap_event *event, void *arg) {
 
     struct ble_hs_adv_fields fields;
@@ -95,11 +112,20 @@ static int ble_app_gap_event(struct ble_gap_event *event, void *arg) {
         if (fields.uuids16 != NULL && fields.uuids16->value == 0xFEAA) {
             ble_beacon_t *data = (ble_beacon_t*) &fields.svc_data_uuid16[4];
             if(data->magic == BEACON_MAGIC) {
-                distance_mm = data->distance_mm;
-                hal_gpio_write(LED_2_PIN, 1);
-                update_leds(distance_mm);
-                hal_gpio_write(LED_2_PIN, 0);
-                // printf("rx %ld\n", data->distance_mm);
+                if(data->type == TYPE_ULTRASOUND) {
+                    distance_mm = data->distance_mm;
+                    hal_gpio_write(LED_2_PIN, 1);
+                    // update_leds(distance_mm);
+                    hal_gpio_write(LED_2_PIN, 0);
+                    // printf("rx %ld\n", data->distance_mm);
+                } else if(data->type == TYPE_PIR) {
+                    hal_gpio_write(LED_3_PIN, data->distance_mm);
+                    if(data->distance_mm == 1) {
+                        led_state = LED_FADING_IN;
+                    } else {
+                        led_state = LED_FADING_OUT;
+                    }
+                }
             }
         }
 
@@ -130,32 +156,48 @@ static void ble_app_on_sync(void) {
 #endif
 
 
-#define MAX_MM 300
+#define MAX_MM 1500
 
-#define MAX_BRIGHTNESS 32
+#define MAX_BRIGHTNESS 64
 
-void update_leds(uint32_t distance_mm) {
+
+void update_leds() {
 
     for(uint16_t led=1; led < WS2812_NUM_PIXELS; led++) {
-        uint32_t threshold = MAX_MM * (WS2812_NUM_PIXELS-led+1) /(WS2812_NUM_PIXELS-1);
-        int32_t brightness = threshold - distance_mm;
-        if(brightness > 255) {
-            brightness = 255;
-        } else if (brightness < 0) {
-            brightness = 0;
+
+        int32_t brightness = pixel_brightness;
+        if(brightness > MAX_BRIGHTNESS) {
+            brightness = MAX_BRIGHTNESS;
         }
 
-        brightness = (brightness * MAX_BRIGHTNESS)/ 256;
-
-        // console_printf("%d %ld %ld\n", led, distance_mm, threshold);
-        if(distance_mm < (threshold)) {
-            ws2812_set_pixel(led, brightness, brightness, brightness);
-        } else {
-            ws2812_set_pixel(led, 0, 0, 0);
-        }
+        ws2812_set_pixel(led, brightness, brightness, brightness);
     }
 
     ws2812_write();
+
+    switch(led_state) {
+        case LED_FADING_IN: {
+            if(pixel_brightness < 512) {
+                pixel_brightness += 4;
+            } else {
+                led_state = LED_IDLE;
+            }
+
+            break;
+        }
+        case LED_FADING_OUT: {
+            if(pixel_brightness > 0) {
+                pixel_brightness--;
+            } else {
+                led_state = LED_IDLE;
+            }
+
+            break;
+        }
+        case LED_IDLE: {
+            break;
+        }
+    }
 }
 
 #define MOISTURE (4)
@@ -178,22 +220,55 @@ void moisture_init() {
 }
 
 
-void blink_task_fn(void *arg) {
+void led_task_fn(void *arg) {
 
     ws2812_init();
-    moisture_init();
 
     hal_gpio_init_out(LED_1_PIN, 0);
     hal_gpio_init_out(LED_2_PIN, 0);
     hal_gpio_init_out(LED_3_PIN, 0);
 
+
     while(1) {
-        os_time_delay(OS_TICKS_PER_SEC * 10);
-        //
-        printf("Moisture: %d\n", moisture_read());
-        hal_gpio_write(LED_1_PIN, 1);
-        os_time_delay(1);
-        hal_gpio_write(LED_1_PIN, 0);
+        os_time_delay(OS_TICKS_PER_SEC/64);
+
+        update_leds();
+        // hal_gpio_write(LED_1_PIN, 1);
+        // os_time_delay(1);
+        // hal_gpio_write(LED_1_PIN, 0);
+
+    }
+}
+
+static uint32_t watering = 0;
+
+void water_task_fn(void *arg) {
+    uint8_t print_count = 0;
+    moisture_init();
+
+    hal_gpio_init_out(TRIG_PIN, 0);
+
+    while(1) {
+        os_time_delay(OS_TICKS_PER_SEC/32);
+
+        if (distance_mm < 1000 || distance_mm > 2500) {
+            watering = 32 * 5; // 5 second hold and max time
+        } else {
+            if (watering > 0) {
+                watering--;
+            }
+        }
+
+        int16_t moisture = moisture_read();
+        if ((moisture < 800) && (watering > 0)) {
+            hal_gpio_write(TRIG_PIN, 1);
+        } else {
+            hal_gpio_write(TRIG_PIN, 0);
+        }
+
+        if((print_count++ & 0x1F) == 0){
+            printf("moisture: %d\ndistance: %ld\n", moisture, distance_mm);
+        }
     }
 }
 
@@ -203,14 +278,24 @@ main(int argc, char **argv)
     sysinit();
 
     os_task_init(
-        &blink_task,
-        "blink_task",
-        blink_task_fn,
+        &led_task,
+        "led_task",
+        led_task_fn,
         NULL,
-        BLINK_TASK_PRI,
+        LED_TASK_PRI,
         OS_WAIT_FOREVER,
-        blink_task_stack,
-        BLINK_STACK_SIZE);
+        led_task_stack,
+        LED_STACK_SIZE);
+
+    os_task_init(
+        &water_task,
+        "water_task",
+        water_task_fn,
+        NULL,
+        WATER_TASK_PRI,
+        OS_WAIT_FOREVER,
+        water_task_stack,
+        WATER_STACK_SIZE);
 
 #if MYNEWT_VAL(USE_BLE)
      ble_hs_cfg.sync_cb = ble_app_on_sync;
