@@ -119,6 +119,8 @@ void blink_task_fn(void *arg) {
     hal_gpio_init_in(PIR_PIN, HAL_GPIO_PULL_DOWN);
 
     while(1) {
+        hal_gpio_toggle(LED_1_PIN);
+        hal_gpio_toggle(LED_2_PIN);
         os_time_delay(OS_TICKS_PER_SEC/2);
     }
 }

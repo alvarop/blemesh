@@ -25,8 +25,22 @@ os_stack_t blink_task_stack[BLINK_STACK_SIZE];
 struct os_task ultrasound_task;
 os_stack_t ultrasound_task_stack[ULTRASOUND_STACK_SIZE];
 
+static uint32_t distance_mm = 0;
+static uint16_t timestamp = 0;
 
 #if MYNEWT_VAL(USE_BLE)
+
+#define BEACON_MAGIC 0x71A0
+
+typedef struct {
+    uint16_t magic;
+    uint32_t device_id;
+    uint16_t timestamp;
+    uint32_t distance_mm;
+    uint32_t flags;
+} __attribute__((packed)) ble_beacon_t;
+
+static ble_beacon_t beacon_data;
 
 static void ble_app_advertise();
 
@@ -60,21 +74,21 @@ static void ble_app_advertise() {
 
     hal_gpio_toggle(LED_3_PIN);
 
+    beacon_data.magic = BEACON_MAGIC;
+    beacon_data.device_id = NRF_FICR->DEVICEADDR[0];
+    beacon_data.timestamp = timestamp++;
+    beacon_data.distance_mm = distance_mm;
+    beacon_data.flags = 0;
+
     fields = (struct ble_hs_adv_fields){ 0 };
-    rc = ble_eddystone_set_adv_data_url(
-        &fields,
-        BLE_EDDYSTONE_URL_SCHEME_HTTPS,
-        "alvarop.com",
-        11,
-        BLE_EDDYSTONE_URL_SUFFIX_NONE,
-        0);
+    rc = ble_eddystone_set_adv_data_uid(&fields, &beacon_data, 0);
     assert(rc == 0);
 
     adv_params = (struct ble_gap_adv_params){ 0 };
     rc = ble_gap_adv_start(
         BLE_OWN_ADDR_RANDOM,
         NULL,
-        1000,
+        100,
         &adv_params,
         gap_event_cb,
         NULL);
@@ -221,7 +235,7 @@ void ultrasound_task_fn(void *arg) {
         if(start_time && stop_time) {
             uint32_t diff_us = stop_time - start_time;
             uint32_t diff_um = (diff_us * 343)/2;
-            uint32_t distance_mm = diff_um/1000;
+            distance_mm = diff_um/1000;
             // console_printf("%ldmm\n", distance_mm);
             if(distance_mm < (MAX_MM + 25)) {
                 last_distance = distance_mm;

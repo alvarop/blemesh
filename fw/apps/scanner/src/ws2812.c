@@ -17,6 +17,7 @@ static nrfx_spim_t spi_dev = NRFX_SPIM_INSTANCE(0);
 
 // First and last bytes must be zero
 static uint8_t pattern[BYTE_LEN * 3 * WS2812_NUM_PIXELS + 2];
+static uint8_t dummyrx[BYTE_LEN * 3 * WS2812_NUM_PIXELS + 2];
 
 
 // Look up table for all 256 bytes
